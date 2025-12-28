@@ -8,8 +8,7 @@ import (
 )
 
 func generate(wd string) error {
-	// Opcional: establecer wd global si fs lo necesita
-	testdir := filepath.Join(wd, "dist")
+	testdir := filepath.Join(wd)
 	fs.SetWorkingDir(testdir)
 
 	return bootstrap.GenerateProject(testdir)
