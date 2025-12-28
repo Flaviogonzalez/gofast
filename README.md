@@ -212,43 +212,6 @@ Contributions are welcome! Here's how you can help:
 - Better plural/singular handling
 - Support for composite primary keys
 
-**Medium Priority:**
-- Incremental schema updates
-- Custom query templates
-- Middleware customization
-- Configuration file support
-- Pagination support
-
-**Nice to Have:**
-- Authentication scaffolding
-- OpenAPI/Swagger documentation generation
-- Docker containerization
-- Migration management
-- Test generation
-
-### Development Setup
-
-1. Clone the repository
-2. Install dependencies: `go mod download`
-3. Make changes in the appropriate package
-4. Build: `go build ./cmd/gofast`
-5. Test against a real MySQL database
-
-### Code Style
-
-- Follow standard Go conventions
-- Run `go fmt` before committing
-- Add comments for exported functions
-- Keep functions focused and small
-
-### Testing
-
-When adding features, please:
-- Test against multiple table schemas
-- Verify generated code compiles
-- Test the generated API endpoints
-- Check error handling paths
-
 ## License
 
 MIT License - see LICENSE file for details
