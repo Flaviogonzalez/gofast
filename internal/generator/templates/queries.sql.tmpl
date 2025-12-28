@@ -1,0 +1,34 @@
+{{- $updCols := updatableColumns . -}}
+{{- if gt (len $updCols) 0 -}}
+-- name: Create{{ singular .Name | title }} :execresult
+INSERT INTO {{ .Name }} (
+{{- $insCols := updatableColumns . -}}
+{{- $length := len $insCols -}}
+{{- range $index, $col := $insCols }}
+  {{ $col.Name }}{{ if lt (add $index 1) $length }},{{ end }}
+{{- end }}
+) VALUES (
+{{- range $index, $col := $insCols }}
+  ?{{ if lt (add $index 1) $length }},{{ end }}
+{{- end }}
+);
+{{- end }}
+
+-- name: Get{{ singular .Name | title }}ByID :one
+SELECT * FROM {{ .Name }} WHERE id = ? LIMIT 1;
+
+-- name: Delete{{ singular .Name | title }} :exec
+DELETE FROM {{ .Name }} WHERE id = ?;
+
+-- name: List{{ .Name | title }} :many
+SELECT * FROM {{ .Name }};
+
+{{- if gt (len $updCols) 0 }}
+-- name: Update{{ singular .Name | title }} :execresult
+UPDATE {{ .Name }} SET
+{{- $length := len $updCols -}}
+{{- range $index, $col := $updCols }}
+  {{ $col.Name }} = ?{{ if lt (add $index 1) $length }},{{ end }}
+{{- end }}
+ WHERE id = ?;
+{{- end }}

@@ -1,0 +1,145 @@
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/{{ .ModuleName }}/internal/models"
+)
+
+type {{ singular .Table.Name | title }}Handler struct {
+	queries *models.Queries
+}
+
+func New{{ singular .Table.Name | title }}Handler(db *sql.DB) *{{ singular .Table.Name | title }}Handler {
+	return &{{ singular .Table.Name | title }}Handler{
+		queries: models.New(db),
+	}
+}
+
+{{- $updCols := updatableColumns .Table }}
+{{- if gt (len $updCols) 0 }}
+// Create{{ singular .Table.Name | title }} handles POST /api/{{ .Table.Name }}
+func (h *{{ singular .Table.Name | title }}Handler) Create{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+	var params models.Create{{ singular .Table.Name | title }}Params
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.queries.Create{{ singular .Table.Name | title }}(r.Context(), params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
+}
+{{- end }}
+
+// Get{{ singular .Table.Name | title }}ByID handles GET /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name | title }}ByID(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.queries.Get{{ singular .Table.Name | title }}ByID(r.Context(), int32(id))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// List{{ .Table.Name | title }} handles GET /api/{{ .Table.Name }}
+func (h *{{ singular .Table.Name | title }}Handler) List{{ .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+	results, err := h.queries.List{{ .Table.Name | title }}(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+{{- if gt (len $updCols) 0 }}
+// Update{{ singular .Table.Name | title }} handles PUT /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var params models.Update{{ singular .Table.Name | title }}Params
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	params.ID = int32(id)
+
+	_, err = h.queries.Update{{ singular .Table.Name | title }}(r.Context(), params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+{{- end }}
+
+// Delete{{ singular .Table.Name | title }} handles DELETE /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | title }}Handler) Delete{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	err = h.queries.Delete{{ singular .Table.Name | title }}(r.Context(), int32(id))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RegisterRoutes registers all routes for {{ .Table.Name }}
+func (h *{{ singular .Table.Name | title }}Handler) RegisterRoutes(r chi.Router) {
+	r.Route("/api/{{ .Table.Name }}", func(r chi.Router) {
+		{{- if gt (len $updCols) 0 }}
+		r.Post("/", h.Create{{ singular .Table.Name | title }})
+		{{- end }}
+		r.Get("/", h.List{{ .Table.Name | title }})
+		r.Get("/{id}", h.Get{{ singular .Table.Name | title }}ByID)
+		{{- if gt (len $updCols) 0 }}
+		r.Put("/{id}", h.Update{{ singular .Table.Name | title }})
+		{{- end }}
+		r.Delete("/{id}", h.Delete{{ singular .Table.Name | title }})
+	})
+}
