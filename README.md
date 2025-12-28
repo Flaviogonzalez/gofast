@@ -135,9 +135,7 @@ Generated code includes:
 From database schema to running API in seconds. Perfect for:
 - Proof of concepts
 - Internal tools
-- Microservices
-- Admin panels
-- Mobile app backends
+- Initial system design
 
 ### MySQL Compatibility
 
