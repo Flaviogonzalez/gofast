@@ -8,6 +8,6 @@ import (
 
 func RegisterAllRoutes(r chi.Router, db *sql.DB) {
 {{- range .Tables }}
-	New{{ singular .Name | title }}Handler(db).RegisterRoutes(r)
+	New{{ singular .Name | toPascal }}Handler(db).RegisterRoutes(r)
 {{- end }}
 }

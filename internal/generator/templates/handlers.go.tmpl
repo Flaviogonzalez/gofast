@@ -15,27 +15,27 @@ import (
 {{- $idParse := idParseFunc .Table -}}
 {{- $idBits := idBitSize .Table }}
 
-type {{ singular .Table.Name | title }}Handler struct {
+type {{ singular .Table.Name | toPascal }}Handler struct {
 	queries *models.Queries
 }
 
-func New{{ singular .Table.Name | title }}Handler(db *sql.DB) *{{ singular .Table.Name | title }}Handler {
-	return &{{ singular .Table.Name | title }}Handler{
+func New{{ singular .Table.Name | toPascal }}Handler(db *sql.DB) *{{ singular .Table.Name | toPascal }}Handler {
+	return &{{ singular .Table.Name | toPascal }}Handler{
 		queries: models.New(db),
 	}
 }
 
 {{- $updCols := updatableColumns .Table }}
 {{- if gt (len $updCols) 0 }}
-// Create{{ singular .Table.Name | title }} handles POST /api/{{ .Table.Name }}
-func (h *{{ singular .Table.Name | title }}Handler) Create{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
-	var params models.Create{{ singular .Table.Name | title }}Params
+// Create{{ singular .Table.Name | toPascal }} handles POST /api/{{ .Table.Name }}
+func (h *{{ singular .Table.Name | toPascal }}Handler) Create{{ singular .Table.Name | toPascal }}(w http.ResponseWriter, r *http.Request) {
+	var params models.Create{{ singular .Table.Name | toPascal }}Params
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := h.queries.Create{{ singular .Table.Name | title }}(r.Context(), params)
+	result, err := h.queries.Create{{ singular .Table.Name | toPascal }}(r.Context(), params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -53,8 +53,8 @@ func (h *{{ singular .Table.Name | title }}Handler) Create{{ singular .Table.Nam
 }
 {{- end }}
 
-// Get{{ singular .Table.Name | title }}ByID handles GET /api/{{ .Table.Name }}/{id}
-func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name | title }}ByID(w http.ResponseWriter, r *http.Request) {
+// Get{{ singular .Table.Name | toPascal }}ByID handles GET /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | toPascal }}Handler) Get{{ singular .Table.Name | toPascal }}ByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
@@ -63,7 +63,7 @@ func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name |
 	}
 	id := {{ $idType }}(idRaw)
 
-	result, err := h.queries.Get{{ singular .Table.Name | title }}ByID(r.Context(), id)
+	result, err := h.queries.Get{{ singular .Table.Name | toPascal }}ByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Not found", http.StatusNotFound)
@@ -77,9 +77,9 @@ func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name |
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-// List{{ .Table.Name | title }} handles GET /api/{{ .Table.Name }}
-func (h *{{ singular .Table.Name | title }}Handler) List{{ .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
-	results, err := h.queries.List{{ .Table.Name | title }}(r.Context())
+// List{{ .Table.Name | toPascal }} handles GET /api/{{ .Table.Name }}
+func (h *{{ singular .Table.Name | toPascal }}Handler) List{{ .Table.Name | toPascal }}(w http.ResponseWriter, r *http.Request) {
+	results, err := h.queries.List{{ .Table.Name | toPascal }}(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -90,8 +90,8 @@ func (h *{{ singular .Table.Name | title }}Handler) List{{ .Table.Name | title }
 }
 
 {{- if gt (len $updCols) 0 }}
-// Update{{ singular .Table.Name | title }} handles PUT /api/{{ .Table.Name }}/{id}
-func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+// Update{{ singular .Table.Name | toPascal }} handles PUT /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | toPascal }}Handler) Update{{ singular .Table.Name | toPascal }}(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
@@ -99,14 +99,14 @@ func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Nam
 		return
 	}
 
-	var params models.Update{{ singular .Table.Name | title }}Params
+	var params models.Update{{ singular .Table.Name | toPascal }}Params
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	params.ID = {{ $idType }}(idRaw)
 
-	_, err = h.queries.Update{{ singular .Table.Name | title }}(r.Context(), params)
+	_, err = h.queries.Update{{ singular .Table.Name | toPascal }}(r.Context(), params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -117,8 +117,8 @@ func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Nam
 }
 {{- end }}
 
-// Delete{{ singular .Table.Name | title }} handles DELETE /api/{{ .Table.Name }}/{id}
-func (h *{{ singular .Table.Name | title }}Handler) Delete{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
+// Delete{{ singular .Table.Name | toPascal }} handles DELETE /api/{{ .Table.Name }}/{id}
+func (h *{{ singular .Table.Name | toPascal }}Handler) Delete{{ singular .Table.Name | toPascal }}(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
@@ -127,7 +127,7 @@ func (h *{{ singular .Table.Name | title }}Handler) Delete{{ singular .Table.Nam
 	}
 	id := {{ $idType }}(idRaw)
 
-	err = h.queries.Delete{{ singular .Table.Name | title }}(r.Context(), id)
+	err = h.queries.Delete{{ singular .Table.Name | toPascal }}(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -137,16 +137,16 @@ func (h *{{ singular .Table.Name | title }}Handler) Delete{{ singular .Table.Nam
 }
 
 // RegisterRoutes registers all routes for {{ .Table.Name }}
-func (h *{{ singular .Table.Name | title }}Handler) RegisterRoutes(r chi.Router) {
+func (h *{{ singular .Table.Name | toPascal }}Handler) RegisterRoutes(r chi.Router) {
 	r.Route("/api/{{ .Table.Name }}", func(r chi.Router) {
 		{{- if gt (len $updCols) 0 }}
-		r.Post("/", h.Create{{ singular .Table.Name | title }})
+		r.Post("/", h.Create{{ singular .Table.Name | toPascal }})
 		{{- end }}
-		r.Get("/", h.List{{ .Table.Name | title }})
-		r.Get("/{id}", h.Get{{ singular .Table.Name | title }}ByID)
+		r.Get("/", h.List{{ .Table.Name | toPascal }})
+		r.Get("/{id}", h.Get{{ singular .Table.Name | toPascal }}ByID)
 		{{- if gt (len $updCols) 0 }}
-		r.Put("/{id}", h.Update{{ singular .Table.Name | title }})
+		r.Put("/{id}", h.Update{{ singular .Table.Name | toPascal }})
 		{{- end }}
-		r.Delete("/{id}", h.Delete{{ singular .Table.Name | title }})
+		r.Delete("/{id}", h.Delete{{ singular .Table.Name | toPascal }})
 	})
 }

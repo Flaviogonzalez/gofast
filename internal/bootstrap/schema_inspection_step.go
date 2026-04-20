@@ -1,13 +1,14 @@
-// internal/bootstrap/schema_step.go
 package bootstrap
 
 import (
-	"bytes"
+	"context"
+	"database/sql"
 	"fmt"
 	"log"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/flaviogonzalez/gofast/internal/fs"
 	"github.com/flaviogonzalez/gofast/internal/schema"
@@ -24,27 +25,23 @@ func (s *SchemaInspectionStep) Run(pctx *ProjectContext) error {
 	}
 	pctx.DatabaseURL = dbURL
 
-	// Analyze database URL to get database info
 	dbInfo, err := fs.AnalyzeDatabaseURL(dbURL)
 	if err != nil {
 		return err
 	}
 	pctx.Database = dbInfo
 
-	if _, lookErr := exec.LookPath("atlas"); lookErr != nil {
-		return fmt.Errorf("atlas CLI not found in PATH — install it from https://atlasgo.io/getting-started")
+	dsn, err := fs.ToMySQLDSN(dbURL)
+	if err != nil {
+		return fmt.Errorf("cannot convert DATABASE_URL to DSN: %w", err)
 	}
 
-	var out, errBuf bytes.Buffer
-	cmd := exec.CommandContext(pctx.Ctx, "atlas", "schema", "inspect", "-u", pctx.DatabaseURL, "--format", "{{ sql . }}")
-	cmd.Stdout = &out
-	cmd.Stderr = &errBuf
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("atlas schema inspect failed: %w\n%s", err, strings.TrimSpace(errBuf.String()))
+	ddl, err := inspectMySQL(pctx.Ctx, dsn)
+	if err != nil {
+		return fmt.Errorf("schema inspection failed: %w", err)
 	}
 
-	if err := fs.WriteFileAtSchemaFolder("schema.sql", out.Bytes()); err != nil {
+	if err := fs.WriteFileAtSchemaFolder("schema.sql", []byte(ddl)); err != nil {
 		return err
 	}
 	pctx.SchemaFilepath = filepath.Join(fs.SchemaFolder, "schema.sql")
@@ -71,6 +68,50 @@ func (s *SchemaInspectionStep) Run(pctx *ProjectContext) error {
 	return nil
 }
 
+// inspectMySQL connects to the database and retrieves CREATE TABLE statements
+// for every table, producing the same DDL that `atlas schema inspect --format "{{ sql . }}"` would.
+func inspectMySQL(ctx context.Context, dsn string) (string, error) {
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return "", fmt.Errorf("cannot reach database: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SHOW TABLES")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var tableNames []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return "", err
+		}
+		tableNames = append(tableNames, name)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	var ddl strings.Builder
+	for _, name := range tableNames {
+		row := db.QueryRowContext(ctx, "SHOW CREATE TABLE `"+name+"`")
+		var tblName, createStmt string
+		if err := row.Scan(&tblName, &createStmt); err != nil {
+			return "", fmt.Errorf("SHOW CREATE TABLE %s: %w", name, err)
+		}
+		ddl.WriteString(createStmt)
+		ddl.WriteString(";\n")
+	}
+	return ddl.String(), nil
+}
+
 func hasIDColumn(t *schema.Table) bool {
 	for _, c := range t.Columns {
 		if strings.EqualFold(c.Name, "id") {
@@ -78,4 +119,13 @@ func hasIDColumn(t *schema.Table) bool {
 		}
 	}
 	return false
+}
+
+// tablesToValues converts a slice of table pointers to table values.
+func tablesToValues(tables []*schema.Table) []schema.Table {
+	result := make([]schema.Table, len(tables))
+	for i, t := range tables {
+		result[i] = *t
+	}
+	return result
 }

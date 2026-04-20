@@ -1,0 +1,30 @@
+package models
+{{- $tables := .Tables }}
+
+import (
+{{- if needsTimeImport $tables }}
+	"time"
+{{- end }}
+)
+{{ range $tables }}
+type {{ singular .Name | toPascal }} struct {
+{{- range .Columns }}
+	{{ toPascal .Name }} {{ columnGoType . }} `json:"{{ .Name }}"`
+{{- end }}
+}
+{{ $updCols := updatableColumns . -}}
+{{ if gt (len $updCols) 0 -}}
+type Create{{ singular .Name | toPascal }}Params struct {
+{{- range $updCols }}
+	{{ toPascal .Name }} {{ columnGoType . }} `json:"{{ .Name }}"`
+{{- end }}
+}
+
+type Update{{ singular .Name | toPascal }}Params struct {
+	ID {{ idGoType . }} `json:"id"`
+{{- range $updCols }}
+	{{ toPascal .Name }} {{ columnGoType . }} `json:"{{ .Name }}"`
+{{- end }}
+}
+{{ end -}}
+{{ end -}}

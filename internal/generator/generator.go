@@ -12,9 +12,6 @@ import (
 //go:embed templates/queries.sql.tmpl
 var queriesTemplate string
 
-//go:embed templates/sqlc.yaml.tmpl
-var sqlcConfigTemplate string
-
 //go:embed templates/handlers.go.tmpl
 var handlersTemplate string
 
@@ -23,6 +20,15 @@ var mainTemplate string
 
 //go:embed templates/routes.go.tmpl
 var routesTemplate string
+
+//go:embed templates/db.go.tmpl
+var dbTemplate string
+
+//go:embed templates/models.go.tmpl
+var modelsTemplate string
+
+//go:embed templates/query_funcs.go.tmpl
+var queryFuncsTemplate string
 
 // HandlerData holds data for handler generation
 type HandlerData struct {
@@ -37,14 +43,29 @@ type MainFileData struct {
 	Driver     string
 }
 
+// ModelsData holds data for models.go generation
+type ModelsData struct {
+	Tables []schema.Table
+}
+
 var funcMap = template.FuncMap{
 	"add":              add,
 	"singular":         singular,
 	"title":            strings.Title,
+	"toPascal":         toPascal,
 	"updatableColumns": updatableColumns,
 	"idGoType":         idGoType,
 	"idParseFunc":      idParseFunc,
 	"idBitSize":        idBitSize,
+	"columnGoType":     columnGoType,
+	"needsTimeImport":  needsTimeImport,
+	"columnList":       columnList,
+	"scanFields":       scanFields,
+	"paramFields":      paramFields,
+	"placeholders":     placeholders,
+	"updateSetClauses": updateSetClauses,
+	"updateParamFields": updateParamFields,
+	"insColList":        insColList,
 }
 
 func GenerateQueriesForTable(table schema.Table) (string, error) {
@@ -177,17 +198,213 @@ func goIntType(c schema.Column) string {
 	return "int64"
 }
 
-func CreateSQLCConfig() (string, error) {
-	tmpl, err := template.New("sqlc").Parse(sqlcConfigTemplate)
+// toPascal converts a snake_case identifier to PascalCase.
+// Special abbreviations (id, url, api, sql, http) are uppercased.
+func toPascal(s string) string {
+	if s == "" {
+		return s
+	}
+	abbrevs := map[string]string{
+		"id": "ID", "url": "URL", "api": "API",
+		"sql": "SQL", "http": "HTTP", "ip": "IP",
+	}
+	parts := strings.Split(s, "_")
+	for i, p := range parts {
+		lower := strings.ToLower(p)
+		if up, ok := abbrevs[lower]; ok {
+			parts[i] = up
+		} else if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// columnGoType returns the Go type for a column, using pointers for nullable columns.
+func columnGoType(c schema.Column) string {
+	base := baseGoType(c)
+	if c.Nullable {
+		return "*" + base
+	}
+	return base
+}
+
+// baseGoType returns the non-pointer Go type for a column.
+func baseGoType(c schema.Column) string {
+	switch c.Type {
+	case schema.TypeInt:
+		return goIntType(c)
+	case schema.TypeFloat:
+		raw := strings.ToUpper(c.RawType)
+		switch {
+		case strings.Contains(raw, "DOUBLE"), strings.Contains(raw, "NUMERIC"),
+			strings.Contains(raw, "DECIMAL"), strings.Contains(raw, "DEC"):
+			return "float64"
+		default:
+			return "float32"
+		}
+	case schema.TypeBool:
+		return "bool"
+	case schema.TypeTime:
+		return "time.Time"
+	case schema.TypeString:
+		return "string"
+	default:
+		return "string"
+	}
+}
+
+// needsTimeImport returns true if any column in the tables uses time.Time.
+func needsTimeImport(tables []schema.Table) bool {
+	for _, t := range tables {
+		for _, c := range t.Columns {
+			if c.Type == schema.TypeTime {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// columnList returns a comma-separated, backtick-quoted list of all column names.
+func columnList(t schema.Table) string {
+	cols := make([]string, len(t.Columns))
+	for i, c := range t.Columns {
+		cols[i] = "`" + c.Name + "`"
+	}
+	return strings.Join(cols, ", ")
+}
+
+// scanFields returns "&i.Field1, &i.Field2, ..." for row.Scan.
+func scanFields(t schema.Table) string {
+	fields := make([]string, len(t.Columns))
+	for i, c := range t.Columns {
+		fields[i] = "&i." + toPascal(c.Name)
+	}
+	return strings.Join(fields, ", ")
+}
+
+// paramFields returns "arg.Field1, arg.Field2, ..." for ExecContext args (non-auto-increment columns).
+func paramFields(t schema.Table) string {
+	var fields []string
+	for _, c := range t.Columns {
+		if !c.AutoIncrement {
+			fields = append(fields, "arg."+toPascal(c.Name))
+		}
+	}
+	return strings.Join(fields, ", ")
+}
+
+// placeholders returns "?, ?, ..." for non-auto-increment columns.
+func placeholders(t schema.Table) string {
+	var count int
+	for _, c := range t.Columns {
+		if !c.AutoIncrement {
+			count++
+		}
+	}
+	return strings.Join(repeatStr("?", count), ", ")
+}
+
+func repeatStr(s string, n int) []string {
+	result := make([]string, n)
+	for i := range result {
+		result[i] = s
+	}
+	return result
+}
+
+// updateSetClauses returns "`col1` = ?, `col2` = ?" for non-auto-increment columns.
+func updateSetClauses(t schema.Table) string {
+	var clauses []string
+	for _, c := range t.Columns {
+		if !c.AutoIncrement {
+			clauses = append(clauses, "`"+c.Name+"` = ?")
+		}
+	}
+	return strings.Join(clauses, ", ")
+}
+
+// updateParamFields returns "arg.Field1, arg.Field2, ..., arg.ID" for UPDATE ExecContext args.
+func updateParamFields(t schema.Table) string {
+	var fields []string
+	for _, c := range t.Columns {
+		if !c.AutoIncrement {
+			fields = append(fields, "arg."+toPascal(c.Name))
+		}
+	}
+	fields = append(fields, "arg.ID")
+	return strings.Join(fields, ", ")
+}
+
+// insColList returns a backtick-quoted list of non-auto-increment columns for INSERT.
+func insColList(t schema.Table) string {
+	var cols []string
+	for _, c := range t.Columns {
+		if !c.AutoIncrement {
+			cols = append(cols, "`"+c.Name+"`")
+		}
+	}
+	return strings.Join(cols, ", ")
+}
+
+// GenerateModelsFile generates the models.go file with all structs.
+func GenerateModelsFile(tables []schema.Table) (string, error) {
+	tmpl, err := template.New("models").Funcs(funcMap).Parse(modelsTemplate)
 	if err != nil {
 		return "", err
 	}
 
+	data := ModelsData{Tables: tables}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// GenerateDBFile generates the db.go file with DBTX interface and Queries struct.
+func GenerateDBFile() (string, error) {
+	tmpl, err := template.New("db").Parse(dbTemplate)
+	if err != nil {
+		return "", err
+	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, nil); err != nil {
 		return "", err
 	}
+	return buf.String(), nil
+}
 
+// GenerateQueryFuncsForTable generates the query functions file for a single table.
+func GenerateQueryFuncsForTable(table schema.Table) (string, error) {
+	fmap := template.FuncMap{
+		"add":               add,
+		"singular":          singular,
+		"title":             strings.Title,
+		"toPascal":          toPascal,
+		"updatableColumns":  updatableColumns,
+		"idGoType":          idGoType,
+		"idParseFunc":       idParseFunc,
+		"idBitSize":         idBitSize,
+		"columnGoType":      columnGoType,
+		"needsTimeImport":   needsTimeImport,
+		"columnList":        columnList,
+		"scanFields":        scanFields,
+		"paramFields":       paramFields,
+		"placeholders":      placeholders,
+		"updateSetClauses":  updateSetClauses,
+		"updateParamFields": updateParamFields,
+		"insColList":        insColList,
+	}
+	tmpl, err := template.New("query_funcs").Funcs(fmap).Parse(queryFuncsTemplate)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, table); err != nil {
+		return "", err
+	}
 	return buf.String(), nil
 }
 

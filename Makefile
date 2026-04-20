@@ -1,5 +1,6 @@
 # gofast Makefile
 # Full pipeline: build → generate → tidy → compile → smoke-test → teardown
+SHELL := sh
 
 GOFAST_BIN    := gofast.exe
 OUT_DIR       := .testrun
@@ -79,7 +80,7 @@ _smoke_run:
 
 	@echo "--- POST /api/category ---"
 	@RESP=$$(curl -sf -X POST -H "Content-Type: application/json" \
-		-d '{"Name":"SmokeTest","Description":null,"ImageUrl":null,"CreatedAt":null}' \
+		-d '{"name":"SmokeTest","description":"smoke desc","image_url":null,"created_at":null}' \
 		$(API_URL)/api/category); \
 	echo "    response: $$RESP"; \
 	echo "$$RESP" | grep -q '"id"' && echo "    PASS: POST /api/category"
@@ -97,7 +98,7 @@ _smoke_run:
 	@echo "--- PUT /api/category/1 ---"
 	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
 		-H "Content-Type: application/json" \
-		-d '{"Name":"Updated","Description":null,"ImageUrl":null,"CreatedAt":null}' \
+		-d '{"name":"Updated","description":"updated desc","image_url":null,"created_at":null}' \
 		$(API_URL)/api/category/1); \
 	echo "    HTTP $$HTTP"; \
 	[ "$$HTTP" = "200" ] || [ "$$HTTP" = "404" ] && echo "    PASS: PUT /api/category/:id"

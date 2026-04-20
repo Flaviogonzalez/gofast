@@ -39,6 +39,59 @@ func encodeCredentials(rawURL string) string {
 	return scheme + "://" + url.UserPassword(user, pass).String() + "@" + rest
 }
 
+// ToMySQLDSN converts a DATABASE_URL in Atlas/URL format
+// (e.g. "mysql://user:pass@host:3306/dbname") into a go-sql-driver/mysql DSN
+// (e.g. "user:pass@tcp(host:3306)/dbname?parseTime=true").
+func ToMySQLDSN(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", fmt.Errorf("empty database URL")
+	}
+	if !strings.Contains(raw, "://") {
+		return ensureParseTime(raw), nil
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+
+	userInfo := ""
+	if u.User != nil {
+		if pw, ok := u.User.Password(); ok {
+			userInfo = u.User.Username() + ":" + pw
+		} else {
+			userInfo = u.User.Username()
+		}
+	}
+
+	host := u.Host
+	if host == "" {
+		host = "localhost:3306"
+	}
+	db := strings.TrimPrefix(u.Path, "/")
+
+	dsn := ""
+	if userInfo != "" {
+		dsn = userInfo + "@"
+	}
+	dsn += "tcp(" + host + ")/" + db
+	if u.RawQuery != "" {
+		dsn += "?" + u.RawQuery
+	}
+	return ensureParseTime(dsn), nil
+}
+
+func ensureParseTime(dsn string) string {
+	if strings.Contains(dsn, "parseTime=") {
+		return dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&parseTime=true"
+	}
+	return dsn + "?parseTime=true"
+}
+
 func AnalyzeDatabaseURL(dbURL string) (*Database, error) {
 	dbURL = strings.TrimSpace(dbURL)
 	if dbURL == "" {

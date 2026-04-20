@@ -122,3 +122,140 @@ func stringsIndex(s, sub string) int {
 	}
 	return -1
 }
+
+func TestToPascal(t *testing.T) {
+	cases := map[string]string{
+		"id":         "ID",
+		"user_id":    "UserID",
+		"created_at": "CreatedAt",
+		"email":      "Email",
+		"image_url":  "ImageURL",
+		"order_item": "OrderItem",
+		"name":       "Name",
+		"":           "",
+	}
+	for in, want := range cases {
+		if got := toPascal(in); got != want {
+			t.Errorf("toPascal(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestColumnGoType(t *testing.T) {
+	cases := []struct {
+		col  schema.Column
+		want string
+	}{
+		{schema.Column{Type: schema.TypeInt, RawType: "BIGINT", Unsigned: false, Nullable: false}, "int64"},
+		{schema.Column{Type: schema.TypeInt, RawType: "BIGINT", Unsigned: true, Nullable: false}, "uint64"},
+		{schema.Column{Type: schema.TypeInt, RawType: "INT", Unsigned: false, Nullable: true}, "*int32"},
+		{schema.Column{Type: schema.TypeString, RawType: "VARCHAR", Nullable: true}, "*string"},
+		{schema.Column{Type: schema.TypeString, RawType: "VARCHAR", Nullable: false}, "string"},
+		{schema.Column{Type: schema.TypeTime, RawType: "DATETIME", Nullable: true}, "*time.Time"},
+		{schema.Column{Type: schema.TypeTime, RawType: "DATETIME", Nullable: false}, "time.Time"},
+		{schema.Column{Type: schema.TypeBool, RawType: "BOOL", Nullable: true}, "*bool"},
+		{schema.Column{Type: schema.TypeFloat, RawType: "FLOAT", Nullable: false}, "float32"},
+		{schema.Column{Type: schema.TypeFloat, RawType: "DOUBLE", Nullable: false}, "float64"},
+		{schema.Column{Type: schema.TypeFloat, RawType: "DECIMAL", Nullable: true}, "*float64"},
+	}
+	for _, c := range cases {
+		if got := columnGoType(c.col); got != c.want {
+			t.Errorf("columnGoType(%s, nullable=%v) = %q, want %q", c.col.RawType, c.col.Nullable, got, c.want)
+		}
+	}
+}
+
+func TestGenerateModelsFile(t *testing.T) {
+	tables := []schema.Table{
+		{
+			Name: "user",
+			Columns: []schema.Column{
+				{Name: "id", Type: schema.TypeInt, RawType: "BIGINT", Unsigned: true, AutoIncrement: true},
+				{Name: "email", Type: schema.TypeString, RawType: "VARCHAR"},
+				{Name: "bio", Type: schema.TypeString, RawType: "TEXT", Nullable: true},
+				{Name: "created_at", Type: schema.TypeTime, RawType: "DATETIME", Nullable: true},
+			},
+		},
+	}
+	out, err := GenerateModelsFile(tables)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{
+		"type User struct",
+		"ID uint64",
+		"Email string",
+		"Bio *string",
+		"CreatedAt *time.Time",
+		"CreateUserParams",
+		"UpdateUserParams",
+		`"time"`,
+	} {
+		if !contains(out, sub) {
+			t.Errorf("expected %q in output:\n%s", sub, out)
+		}
+	}
+}
+
+func TestGenerateDBFile(t *testing.T) {
+	out, err := GenerateDBFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{"DBTX", "Queries", "func New("} {
+		if !contains(out, sub) {
+			t.Errorf("expected %q in output:\n%s", sub, out)
+		}
+	}
+}
+
+func TestGenerateQueryFuncsForTable(t *testing.T) {
+	tbl := schema.Table{
+		Name: "order",
+		Columns: []schema.Column{
+			{Name: "id", Type: schema.TypeInt, RawType: "BIGINT", AutoIncrement: true},
+			{Name: "status", Type: schema.TypeString, RawType: "VARCHAR"},
+		},
+	}
+	out, err := GenerateQueryFuncsForTable(tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{
+		"func (q *Queries) CreateOrder(",
+		"func (q *Queries) GetOrderByID(",
+		"func (q *Queries) ListOrder(",
+		"func (q *Queries) UpdateOrder(",
+		"func (q *Queries) DeleteOrder(",
+		"`order`",
+		"`status`",
+	} {
+		if !contains(out, sub) {
+			t.Errorf("expected %q in output:\n%s", sub, out)
+		}
+	}
+}
+
+func TestGenerateHandlersSnakeCase(t *testing.T) {
+	tbl := schema.Table{
+		Name: "order_items",
+		Columns: []schema.Column{
+			{Name: "id", Type: schema.TypeInt, RawType: "INT", AutoIncrement: true},
+			{Name: "order_id", Type: schema.TypeInt, RawType: "INT"},
+		},
+	}
+	out, err := GenerateHandlersForTable(tbl, "testmod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// toPascal should produce "OrderItem" (singular of "order_items")
+	for _, sub := range []string{
+		"OrderItemHandler",
+		"NewOrderItemHandler",
+		"models.CreateOrderItemParams",
+	} {
+		if !contains(out, sub) {
+			t.Errorf("expected %q in output:\n%s", sub, out)
+		}
+	}
+}

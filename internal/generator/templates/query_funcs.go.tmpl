@@ -1,0 +1,56 @@
+{{- $updCols := updatableColumns . -}}
+package models
+
+import (
+	"context"
+{{- if gt (len $updCols) 0 }}
+	"database/sql"
+{{- end }}
+)
+{{ if gt (len $updCols) 0 }}
+const create{{ singular .Name | toPascal }}Query = "INSERT INTO `{{ .Name }}` ({{ insColList . }}) VALUES ({{ placeholders . }})"
+
+func (q *Queries) Create{{ singular .Name | toPascal }}(ctx context.Context, arg Create{{ singular .Name | toPascal }}Params) (sql.Result, error) {
+	return q.db.ExecContext(ctx, create{{ singular .Name | toPascal }}Query, {{ paramFields . }})
+}
+{{ end }}
+const get{{ singular .Name | toPascal }}ByIDQuery = "SELECT {{ columnList . }} FROM `{{ .Name }}` WHERE `id` = ? LIMIT 1"
+
+func (q *Queries) Get{{ singular .Name | toPascal }}ByID(ctx context.Context, id {{ idGoType . }}) ({{ singular .Name | toPascal }}, error) {
+	row := q.db.QueryRowContext(ctx, get{{ singular .Name | toPascal }}ByIDQuery, id)
+	var i {{ singular .Name | toPascal }}
+	err := row.Scan({{ scanFields . }})
+	return i, err
+}
+
+const list{{ .Name | toPascal }}Query = "SELECT {{ columnList . }} FROM `{{ .Name }}`"
+
+func (q *Queries) List{{ .Name | toPascal }}(ctx context.Context) ([]{{ singular .Name | toPascal }}, error) {
+	rows, err := q.db.QueryContext(ctx, list{{ .Name | toPascal }}Query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []{{ singular .Name | toPascal }}{}
+	for rows.Next() {
+		var i {{ singular .Name | toPascal }}
+		if err := rows.Scan({{ scanFields . }}); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+{{ if gt (len $updCols) 0 }}
+const update{{ singular .Name | toPascal }}Query = "UPDATE `{{ .Name }}` SET {{ updateSetClauses . }} WHERE `id` = ?"
+
+func (q *Queries) Update{{ singular .Name | toPascal }}(ctx context.Context, arg Update{{ singular .Name | toPascal }}Params) (sql.Result, error) {
+	return q.db.ExecContext(ctx, update{{ singular .Name | toPascal }}Query, {{ updateParamFields . }})
+}
+{{ end }}
+const delete{{ singular .Name | toPascal }}Query = "DELETE FROM `{{ .Name }}` WHERE `id` = ?"
+
+func (q *Queries) Delete{{ singular .Name | toPascal }}(ctx context.Context, id {{ idGoType . }}) error {
+	_, err := q.db.ExecContext(ctx, delete{{ singular .Name | toPascal }}Query, id)
+	return err
+}

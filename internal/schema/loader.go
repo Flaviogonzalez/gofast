@@ -29,7 +29,7 @@ func (l *SQLLoader) Load() (*Schema, error) {
 	inCreateTable := false
 
 	createTableRe := regexp.MustCompile(`(?i)CREATE\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\x60"']?(\w+)[\x60"']?\s*\(`)
-	columnRe := regexp.MustCompile(`^\s*[\x60"'](\w+)[\x60"']\s+(\w+(?:\([^)]*\))?(?:\s+(?:UNSIGNED|SIGNED|ZEROFILL))?)(.*)`)
+	columnRe := regexp.MustCompile(`(?i)^\s*[\x60"'](\w+)[\x60"']\s+(\w+(?:\([^)]*\))?(?:\s+(?:UNSIGNED|SIGNED|ZEROFILL))?)(.*)`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -51,10 +51,8 @@ func (l *SQLLoader) Load() (*Schema, error) {
 			continue
 		}
 
-		// Detect end of CREATE TABLE
-		if inCreateTable && (strings.HasPrefix(trimmed, ")") || strings.Contains(trimmed, ") ENGINE") || 
-		    strings.Contains(trimmed, ") CHARSET") || strings.Contains(trimmed, ") COLLATE") ||
-			strings.Contains(trimmed, ") AUTO_INCREMENT")) {
+		// Detect end of CREATE TABLE – the closing line always starts with ")"
+		if inCreateTable && strings.HasPrefix(trimmed, ")") {
 			if currentTable != nil {
 				schema.Tables = append(schema.Tables, *currentTable)
 			}
