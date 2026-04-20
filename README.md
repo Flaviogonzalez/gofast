@@ -178,10 +178,6 @@ The singular/plural conversion is simplistic (removes trailing 's'). Tables with
 
 Generated code assumes each table has an `id` column as the primary key. Tables with composite keys or non-standard primary keys may not work correctly.
 
-### Windows Command Execution
-
-The tool uses Windows-specific command execution (`cmd /C`) for running sqlc. On Linux/Mac, this may need adjustment.
-
 ## How to Contribute
 
 Contributions are welcome! Here's how you can help:

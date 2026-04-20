@@ -2,9 +2,18 @@
 # Full pipeline: build → generate → tidy → compile → smoke-test → teardown
 SHELL := sh
 
-GOFAST_BIN    := gofast.exe
+# Detect OS: on Windows, $(OS) is set to "Windows_NT" by the environment.
+ifeq ($(OS),Windows_NT)
+    EXT      := .exe
+    KILL_API  = taskkill //F //IM api$(EXT) > /dev/null 2>&1 || true
+else
+    EXT      :=
+    KILL_API  = pkill -f "$(OUT_DIR)/api" > /dev/null 2>&1 || true
+endif
+
+GOFAST_BIN    := gofast$(EXT)
 OUT_DIR       := .testrun
-API_BIN       := $(OUT_DIR)/api.exe
+API_BIN       := $(OUT_DIR)/api$(EXT)
 API_PORT      := 18082
 API_URL       := http://localhost:$(API_PORT)
 DATABASE_URL  ?= mysql://root:root@localhost:3306/gofast-test
@@ -49,7 +58,7 @@ tidy-api:
 ## build-api: compile the generated API binary
 build-api:
 	@echo "==> Building generated API..."
-	@cd $(OUT_DIR) && go build -o api.exe ./cmd/api
+	@cd $(OUT_DIR) && go build -o api$(EXT) ./cmd/api
 	@echo "    OK: $(API_BIN)"
 
 # ─── Runtime smoke tests ──────────────────────────────────────────────────────
@@ -57,7 +66,7 @@ build-api:
 ## start-api: start the generated API server in the background
 start-api: build-api
 	@echo "==> Starting API on port $(API_PORT)..."
-	@cd $(OUT_DIR) && PORT=$(API_PORT) ./api.exe > api.log 2>&1 &
+	@cd $(OUT_DIR) && PORT=$(API_PORT) ./api$(EXT) > api.log 2>&1 &
 	@echo "    Waiting for server to become ready..."
 	@for i in 1 2 3 4 5 6 7 8 9 10; do \
 		curl -sf $(API_URL)/health > /dev/null 2>&1 && echo "    Server is up" && exit 0; \
@@ -129,7 +138,7 @@ _smoke_run:
 
 ## stop-api: stop the generated API server
 stop-api:
-	@taskkill //F //IM api.exe > /dev/null 2>&1 || true
+	@$(KILL_API)
 	@echo "    Server stopped."
 
 # ─── Housekeeping ─────────────────────────────────────────────────────────────
