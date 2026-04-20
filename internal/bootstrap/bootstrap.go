@@ -38,6 +38,7 @@ func GenerateProject(wd string) error {
 		&SQLCConfigStep{},
 		&SQLCGenerateStep{},
 		&HandlersGenerationStep{},
+		&RoutesGenerationStep{},
 		&MainFileGenerationStep{},
 		&GoModStep{},
 	}

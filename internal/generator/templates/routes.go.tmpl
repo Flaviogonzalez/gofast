@@ -1,0 +1,13 @@
+package handlers
+
+import (
+	"database/sql"
+
+	"github.com/go-chi/chi/v5"
+)
+
+func RegisterAllRoutes(r chi.Router, db *sql.DB) {
+{{- range .Tables }}
+	New{{ singular .Name | title }}Handler(db).RegisterRoutes(r)
+{{- end }}
+}
