@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/Flaviogonzalez/gofast/compare/v1.1.0...v1.2.0) (2026-04-20)
+
+
+### Features
+
+* cross-platform Makefile, updated README, removed ADR-001 ([4886898](https://github.com/Flaviogonzalez/gofast/commit/4886898f164f8a3a9ee324fa934284349ce663b2))
+
+
+### Bug Fixes
+
+* make Makefile cross-platform (Linux/Mac/Windows) ([aec4d12](https://github.com/Flaviogonzalez/gofast/commit/aec4d12a3dab925487fde1498f990fb86029de3d))
+
 ## [1.1.0](https://github.com/Flaviogonzalez/gofast/compare/v1.0.4...v1.1.0) (2026-04-20)
 
 
