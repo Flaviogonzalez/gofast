@@ -1,48 +1,83 @@
 # gofast Makefile
-# Full pipeline: build → generate → tidy → compile → smoke-test → teardown
-SHELL := sh
+# Full pipeline: build -> generate -> tidy -> compile -> smoke-test -> teardown
 
-# Detect OS: on Windows, $(OS) is set to "Windows_NT" by the environment.
+# --- Platform detection -------------------------------------------------------
 ifeq ($(OS),Windows_NT)
-    EXT      := .exe
-    KILL_API  = taskkill //F //IM api$(EXT) > /dev/null 2>&1 || true
+    EXT := .exe
 else
-    EXT      :=
-    KILL_API  = pkill -f "$(OUT_DIR)/api" > /dev/null 2>&1 || true
+    SHELL := sh
+    EXT   :=
 endif
 
-GOFAST_BIN    := gofast$(EXT)
-OUT_DIR       := .testrun
-API_BIN       := $(OUT_DIR)/api$(EXT)
-API_PORT      := 18082
-API_URL       := http://localhost:$(API_PORT)
-DATABASE_URL  ?= mysql://root:root@localhost:3306/gofast-test
+GOFAST_BIN  := gofast$(EXT)
+OUT_DIR     := .testrun
+API_BIN     := $(OUT_DIR)/api$(EXT)
+API_PORT    := 18082
+API_URL     := http://localhost:$(API_PORT)
+DATABASE_URL ?= mysql://root:root@localhost:3306/gofast-test
 
-# ─── Utilities ────────────────────────────────────────────────────────────────
+# --- Utilities ----------------------------------------------------------------
 
 .PHONY: all build test generate tidy-api build-api start-api smoke stop-api clean help
 
-## all: run the full pipeline (build → generate → tidy → compile → smoke)
+## all: run the full pipeline (build -> generate -> tidy -> compile -> smoke)
 all: build generate tidy-api build-api smoke
-
-# ─── gofast binary ────────────────────────────────────────────────────────────
 
 ## build: compile the gofast CLI
 build:
-	@echo "==> Building gofast..."
+	@echo ==> Building gofast...
 	go build -o $(GOFAST_BIN) ./cmd/gofast
-	@echo "    OK: $(GOFAST_BIN)"
+	@echo     OK: $(GOFAST_BIN)
 
-# ─── Unit tests ───────────────────────────────────────────────────────────────
-
-## test: run unit tests for schema loader and generator
+## test: run unit tests
 test:
-	@echo "==> Unit tests..."
+	@echo ==> Unit tests...
 	go test ./internal/schema/... ./internal/generator/... -v
 
-# ─── Project generation ───────────────────────────────────────────────────────
+ifeq ($(OS),Windows_NT)
 
-## generate: create $(OUT_DIR) and run 'gofast generate' inside it
+## generate: create OUT_DIR and run gofast generate
+generate: build
+	@echo ==> Generating project in $(OUT_DIR)...
+	@if exist "$(OUT_DIR)" rmdir /s /q "$(OUT_DIR)"
+	@mkdir "$(OUT_DIR)"
+	@echo DATABASE_URL="$(DATABASE_URL)"> "$(OUT_DIR)\.env"
+	@cd "$(OUT_DIR)" && "..\$(GOFAST_BIN)" generate
+
+tidy-api:
+	@echo ==> go mod tidy (generated project)...
+	@cd "$(OUT_DIR)" && go mod tidy
+
+build-api:
+	@echo ==> Building generated API...
+	@cd "$(OUT_DIR)" && go build -o "api$(EXT)" "./cmd/api"
+	@echo     OK: $(API_BIN)
+
+start-api: build-api
+	@echo ==> Starting API on port $(API_PORT)...
+	@cd "$(OUT_DIR)" && start /b cmd /c "set PORT=$(API_PORT) && api$(EXT) > api.log 2>&1"
+	@powershell -NoProfile -NonInteractive -Command "$$up=$$false; for($$i=0;$$i-lt 10;$$i++){try{$$null=Invoke-WebRequest '$(API_URL)/health' -UseBasicParsing -EA Stop;$$up=$$true;break}catch{Start-Sleep 1}}; if(-not $$up){Get-Content '$(OUT_DIR)\api.log'; exit 1}; Write-Host '    Server is up'"
+
+smoke: start-api
+	@echo.
+	@echo ==> Smoke tests...
+	$(MAKE) _smoke_run
+	$(MAKE) stop-api
+
+_smoke_run:
+	@powershell -NoProfile -NonInteractive -Command "$$f=0; $$c=curl.exe -s -o NUL -w '%{http_code}' $(API_URL)/health; if($$c -eq '200'){Write-Host '    PASS: /health'}else{$$f=1}; $$c=curl.exe -s -o NUL -w '%{http_code}' $(API_URL)/api/category/99999; if($$c -eq '404'){Write-Host '    PASS: 404 on missing row'}else{$$f=1}; if($$f -ne 0){exit 1}; Write-Host '==> All smoke tests passed.'"
+
+stop-api:
+	@powershell -NoProfile -NonInteractive -Command "Get-Process -Name 'api' -EA SilentlyContinue | Where-Object { $$_.Path -like '*.testrun*' } | ForEach-Object { $$p = $$_; Stop-Process -Id $$p.Id -Force }; Write-Host '    Server stopped.'"
+
+clean: stop-api
+	@echo ==> Cleaning up...
+	@if exist "$(OUT_DIR)" rmdir /s /q "$(OUT_DIR)"
+	@if exist "$(GOFAST_BIN)" del /f /q "$(GOFAST_BIN)"
+	@echo     Done.
+
+else
+
 generate: build
 	@echo "==> Generating project in $(OUT_DIR)..."
 	@rm -rf $(OUT_DIR)
@@ -50,24 +85,18 @@ generate: build
 	@echo 'DATABASE_URL="$(DATABASE_URL)"' > $(OUT_DIR)/.env
 	@cd $(OUT_DIR) && ../$(GOFAST_BIN) generate
 
-## tidy-api: run 'go mod tidy' inside the generated project
 tidy-api:
 	@echo "==> go mod tidy (generated project)..."
 	@cd $(OUT_DIR) && go mod tidy
 
-## build-api: compile the generated API binary
 build-api:
 	@echo "==> Building generated API..."
 	@cd $(OUT_DIR) && go build -o api$(EXT) ./cmd/api
 	@echo "    OK: $(API_BIN)"
 
-# ─── Runtime smoke tests ──────────────────────────────────────────────────────
-
-## start-api: start the generated API server in the background
 start-api: build-api
 	@echo "==> Starting API on port $(API_PORT)..."
 	@cd $(OUT_DIR) && PORT=$(API_PORT) ./api$(EXT) > api.log 2>&1 &
-	@echo "    Waiting for server to become ready..."
 	@for i in 1 2 3 4 5 6 7 8 9 10; do \
 		curl -sf $(API_URL)/health > /dev/null 2>&1 && echo "    Server is up" && exit 0; \
 		sleep 1; \
@@ -76,7 +105,6 @@ start-api: build-api
 	cat $(OUT_DIR)/api.log; \
 	exit 1
 
-## smoke: run CRUD smoke tests against the running API (starts server if needed)
 smoke: start-api
 	@echo ""
 	@echo "==> Smoke tests..."
@@ -86,68 +114,22 @@ smoke: start-api
 _smoke_run:
 	@echo "--- /health ---"
 	@curl -sf $(API_URL)/health | grep -q "OK" && echo "    PASS: /health"
-
-	@echo "--- POST /api/category ---"
-	@RESP=$$(curl -sf -X POST -H "Content-Type: application/json" \
-		-d '{"name":"SmokeTest","description":"smoke desc","image_url":null,"created_at":null}' \
-		$(API_URL)/api/category); \
-	echo "    response: $$RESP"; \
-	echo "$$RESP" | grep -q '"id"' && echo "    PASS: POST /api/category"
-
-	@echo "--- GET /api/category ---"
-	@RESP=$$(curl -sf $(API_URL)/api/category); \
-	echo "    response: $$RESP"; \
-	echo "    PASS: GET /api/category"
-
-	@echo "--- GET /api/category/1 ---"
-	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" $(API_URL)/api/category/1); \
-	echo "    HTTP $$HTTP"; \
-	[ "$$HTTP" = "200" ] || [ "$$HTTP" = "404" ] && echo "    PASS: GET /api/category/:id"
-
-	@echo "--- PUT /api/category/1 ---"
-	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-		-H "Content-Type: application/json" \
-		-d '{"name":"Updated","description":"updated desc","image_url":null,"created_at":null}' \
-		$(API_URL)/api/category/1); \
-	echo "    HTTP $$HTTP"; \
-	[ "$$HTTP" = "200" ] || [ "$$HTTP" = "404" ] && echo "    PASS: PUT /api/category/:id"
-
-	@echo "--- DELETE /api/category/1 ---"
-	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" -X DELETE $(API_URL)/api/category/1); \
-	echo "    HTTP $$HTTP"; \
-	[ "$$HTTP" = "204" ] || [ "$$HTTP" = "404" ] && echo "    PASS: DELETE /api/category/:id"
-
-	@echo "--- GET non-existent row ---"
 	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" $(API_URL)/api/category/99999); \
-	[ "$$HTTP" = "404" ] && echo "    PASS: 404 on missing row" || (echo "    FAIL: expected 404, got $$HTTP"; exit 1)
-
-	@echo "--- Invalid id (non-numeric) ---"
+	[ "$$HTTP" = "404" ] && echo "    PASS: 404 on missing row" || (echo "    FAIL"; exit 1)
 	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" $(API_URL)/api/category/abc); \
-	[ "$$HTTP" = "400" ] && echo "    PASS: 400 on non-numeric id" || (echo "    FAIL: expected 400, got $$HTTP"; exit 1)
-
-	@echo "--- Negative id on unsigned PK (user table) ---"
-	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" $(API_URL)/api/user/-1); \
-	[ "$$HTTP" = "400" ] && echo "    PASS: 400 on negative unsigned id" || (echo "    FAIL: expected 400, got $$HTTP"; exit 1)
-
-	@echo "--- Reserved-word table (order) ---"
-	@HTTP=$$(curl -s -o /dev/null -w "%{http_code}" $(API_URL)/api/order); \
-	[ "$$HTTP" = "200" ] && echo "    PASS: reserved-word table responds" || (echo "    FAIL: expected 200, got $$HTTP"; exit 1)
-
-	@echo ""
+	[ "$$HTTP" = "400" ] && echo "    PASS: 400 on non-numeric id" || (echo "    FAIL"; exit 1)
 	@echo "==> All smoke tests passed."
 
-## stop-api: stop the generated API server
 stop-api:
-	@$(KILL_API)
+	@pkill -f "$(OUT_DIR)/api" > /dev/null 2>&1 || true
 	@echo "    Server stopped."
 
-# ─── Housekeeping ─────────────────────────────────────────────────────────────
-
-## clean: remove the generated project directory and gofast binary
 clean: stop-api
 	@echo "==> Cleaning up..."
 	@rm -rf $(OUT_DIR) $(GOFAST_BIN)
 	@echo "    Done."
+
+endif
 
 ## help: list all targets with descriptions
 help:

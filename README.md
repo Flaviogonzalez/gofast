@@ -2,13 +2,13 @@
 
 A rapid REST API generator for Go that scaffolds complete CRUD APIs from MySQL database schemas.
 
+**gofast is a single binary with zero external dependencies.** No Atlas CLI, no sqlc — just Go.
+
 ## Prerequisites
 
 - Go 1.23 or later
 - MySQL database (local or remote)
-- sqlc v1.30.0 or later (install from https://docs.sqlc.dev/en/latest/overview/install.html)
-- Atlas CLI (install from https://atlasgo.io/getting-started)
-- DATABASE_URL environment variable pointing to your MySQL database
+- `DATABASE_URL` environment variable pointing to your MySQL database
 
 ## Installation
 
@@ -18,43 +18,32 @@ A rapid REST API generator for Go that scaffolds complete CRUD APIs from MySQL d
 go install github.com/flaviogonzalez/gofast/cmd/gofast@latest
 ```
 
-This will install the `gofast` binary to your `$GOPATH/bin` directory.
-
 ### From Source
 
 ```bash
 git clone https://github.com/flaviogonzalez/gofast.git
 cd gofast
-go build ./cmd/gofast
+go build -o gofast ./cmd/gofast
 ```
-
-This will create a `gofast` executable in the current directory.
 
 ## Usage
 
-### Basic Usage
-
 1. Set your database connection string:
 
-#### **Environment Variable**
-
-**Windows PowerShell:**
+**Windows (PowerShell):**
 ```powershell
-$env:DATABASE_URL="driver://user:password@tcp(host:3306)/database"
+$env:DATABASE_URL="mysql://user:password@localhost:3306/mydb"
 ```
 
 **Linux/Mac:**
 ```bash
-export DATABASE_URL="driver://user:password@tcp(host:3306)/database"
+export DATABASE_URL="mysql://user:password@localhost:3306/mydb"
 ```
 
-
-
-2. Create a directory for your new project and navigate to it:
+2. Create a directory for your project and navigate to it:
 
 ```bash
-mkdir my-api
-cd my-api
+mkdir my-api && cd my-api
 ```
 
 3. Generate your API:
@@ -70,7 +59,7 @@ go mod tidy
 go run cmd/api/main.go
 ```
 
-Your API will start on port 8080 (or the port specified in the PORT environment variable).
+Your API starts on port 8080 (or `$PORT` if set).
 
 ### Generated Project Structure
 
@@ -82,101 +71,92 @@ Your API will start on port 8080 (or the port specified in the PORT environment 
 ├── internal/
 │   ├── handlers/            # HTTP handlers for each table
 │   │   ├── users_handler.go
-│   │   ├── posts_handler.go
 │   │   └── ...
-│   └── models/              # sqlc-generated database models
+│   └── models/              # Generated type-safe database models
 │       ├── db.go
 │       ├── models.go
-│       └── querier.go
+│       └── <table>_query_funcs.go
 ├── sql/
-│   ├── queries/             # Generated SQL queries
-│   │   ├── users.sql
-│   │   ├── posts.sql
-│   │   └── ...
+│   ├── queries/             # Generated SQL query files
 │   └── schema/
-│       └── schema.sql       # Database schema
-├── go.mod
-└── sqlc.yaml               # sqlc configuration
+│       └── schema.sql       # Inspected database schema
+└── go.mod
 ```
 
 ### Generated Endpoints
 
-For each table in your database, gofast generates the following endpoints:
+For each table in your database, gofast generates:
 
-- `POST /api/{table}` - Create a new record
-- `GET /api/{table}` - List all records
-- `GET /api/{table}/{id}` - Get a single record by ID
-- `PUT /api/{table}/{id}` - Update a record
-- `DELETE /api/{table}/{id}` - Delete a record
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/{table}` | Create a record |
+| `GET` | `/api/{table}` | List all records |
+| `GET` | `/api/{table}/{id}` | Get a record by ID |
+| `PUT` | `/api/{table}/{id}` | Update a record |
+| `DELETE` | `/api/{table}/{id}` | Delete a record |
 
-Plus a health check endpoint:
-- `GET /health` - Returns OK if the service is running
+Plus a health check:
+- `GET /health` → `200 OK`
 
 ## What gofast Excels At
 
+### Single Binary, Zero Install Friction
+
+gofast ships as a single self-contained binary. It connects directly to your MySQL database using the standard `database/sql` driver — no Atlas CLI, no sqlc, no extra tools to install.
+
 ### Zero Configuration
 
-gofast uses your database name as the Go module name, eliminating the need for configuration files or interactive prompts. Just point it at a database and go.
+gofast uses your database name as the Go module name. No config files, no interactive prompts.
 
 ### Type-Safe Code Generation
 
-By leveraging sqlc, all database operations are type-safe at compile time. No reflection, no runtime errors from SQL typos.
+All database operations are generated from your schema into typed Go structs and query functions — no reflection, no runtime SQL surprises.
 
 ### Production-Ready Patterns
 
 Generated code includes:
 - Proper error handling
-- HTTP middleware (logging, recovery, request IDs)
+- HTTP middleware (logging, recovery, request IDs via chi)
 - Environment-based configuration
 - Clean separation of concerns
 
 ### Rapid Prototyping
 
-From database schema to running API in seconds. Perfect for:
-- Proof of concepts
-- Internal tools
-- Initial system design
+From database schema to running API in seconds. Perfect for proof of concepts, internal tools, and initial system design.
 
 ### MySQL Compatibility
 
-Specifically designed for MySQL databases with proper handling of:
-- AUTO_INCREMENT columns
-- LAST_INSERT_ID() for created records
-- MySQL-specific data types
+Designed for MySQL with proper handling of `AUTO_INCREMENT`, `LAST_INSERT_ID()`, and MySQL-specific data types.
 
 ## Pitfalls and Limitations
 
 ### Database Support
 
-Currently only supports MySQL databases. PostgreSQL, SQLite, and other databases are not supported.
+Currently only supports MySQL databases. PostgreSQL and SQLite are not yet supported.
 
 ### Schema Changes
 
-If you modify your database schema after generation, you need to:
-1. Delete the generated project
-2. Run `gofast generate` again
-
-There is no incremental update support.
+Regeneration is full project replacement — there is no incremental update support. If you modify your schema, delete the generated project and run `gofast generate` again.
 
 ### Complex Queries
 
-Generated queries are basic CRUD operations only. Complex queries with joins, aggregations, or business logic must be added manually.
+Generated queries are basic CRUD only. Joins, aggregations, and business logic must be added manually.
 
 ### Authentication and Authorization
 
-No authentication or authorization is generated. You must implement your own security layer.
+No auth is generated. You must implement your own security layer.
 
-### Validation
+### Input Validation
 
-Input validation is minimal. The generated code will decode JSON and pass it to the database, but domain-specific validation must be added.
+Validation is minimal — JSON is decoded and passed directly to the database. Domain-specific validation must be added manually.
 
-### Table Naming Assumptions
+### Table Naming
 
-The singular/plural conversion is simplistic (removes trailing 's'). Tables with irregular plurals may generate odd handler names.
+Singular/plural conversion uses a small set of English rules. Tables with irregular plurals may produce unexpected handler names.
 
 ### Primary Key Assumptions
 
-Generated code assumes each table has an `id` column as the primary key. Tables with composite keys or non-standard primary keys may not work correctly.
+Each table must have an `id` column as its primary key. Tables with composite keys or non-standard primary keys are not yet supported.
 
 ## How to Contribute
 
@@ -204,9 +184,9 @@ Contributions are welcome! Here's how you can help:
 **High Priority:**
 - PostgreSQL support
 - SQLite support
-- Cross-platform command execution (Linux/Mac compatibility)
 - Better plural/singular handling
 - Support for composite primary keys
+- Incremental schema updates (re-generate without full project deletion)
 
 ## License
 
