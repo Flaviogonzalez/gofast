@@ -4,65 +4,128 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
+	"time"
 
-    "github.com/joho/godotenv"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
 	"github.com/{{ .ModuleName }}/internal/handlers"
 )
 
+// toMySQLDSN converts a DATABASE_URL in Atlas/URL format
+// (e.g. "mysql://user:pass@host:3306/dbname?parseTime=true")
+// into a go-sql-driver/mysql DSN (e.g. "user:pass@tcp(host:3306)/dbname?parseTime=true").
+// If the URL is already in DSN form it is returned unchanged.
+func toMySQLDSN(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	// Already a driver DSN (no scheme://) — return as is.
+	if !strings.Contains(raw, "://") {
+		return ensureParseTime(raw), nil
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+
+	userInfo := ""
+	if u.User != nil {
+		if pw, ok := u.User.Password(); ok {
+			userInfo = u.User.Username() + ":" + pw
+		} else {
+			userInfo = u.User.Username()
+		}
+	}
+
+	host := u.Host
+	if host == "" {
+		host = "localhost:3306"
+	}
+	db := strings.TrimPrefix(u.Path, "/")
+
+	dsn := ""
+	if userInfo != "" {
+		dsn = userInfo + "@"
+	}
+	dsn += "tcp(" + host + ")/" + db
+	if u.RawQuery != "" {
+		dsn += "?" + u.RawQuery
+	}
+	return ensureParseTime(dsn), nil
+}
+
+// ensureParseTime appends parseTime=true so *time.Time scans work out of the box.
+func ensureParseTime(dsn string) string {
+	if strings.Contains(dsn, "parseTime=") {
+		return dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&parseTime=true"
+	}
+	return dsn + "?parseTime=true"
+}
+
 func main() {
-    err := godotenv.Load()
-    if err != nil {
-        log.Fatal("Error loading .env file")
-    }
-    
-	// Read database URL from environment
+	_ = godotenv.Load()
+
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
 
-	// Connect to database
-	db, err := sql.Open("mysql", dbURL)
+	dsn, err := toMySQLDSN(dbURL)
+	if err != nil {
+		log.Fatalf("invalid DATABASE_URL: %v", err)
+	}
+
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	// Verify connection
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("database ping failed: %v", err)
 	}
 
-	log.Println("✓ Database connection established")
+	log.Println("database connection established")
 
-	// Initialize router
 	r := chi.NewRouter()
 
-	// Middleware
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
 
-	// Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handlers.RegisterAllRoutes(r, db)
 
-	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("🚀 Server starting on port %s\n", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	log.Printf("server starting on port %s", port)
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }

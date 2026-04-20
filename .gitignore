@@ -1,3 +1,6 @@
 .env
 /dist
 *.exe
+.claude/
+.testrun/
+gofast.exe

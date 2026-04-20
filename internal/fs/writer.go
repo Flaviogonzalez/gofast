@@ -72,11 +72,12 @@ func WriteFileAtModelsFolder(filename string, content []byte) error {
 
 func SetWorkingDir(wd string) {
 	WorkingDir = wd
-	// recalcular todas las rutas si es necesario
 	SQLFolder = filepath.Join(WorkingDir, "sql")
 	SchemaFolder = filepath.Join(SQLFolder, "schema")
 	QueriesFolder = filepath.Join(SQLFolder, "queries")
 	InternalFolder = filepath.Join(WorkingDir, "internal")
 	HandlersFolder = filepath.Join(InternalFolder, "handlers")
 	ModelsFolder = filepath.Join(InternalFolder, "models")
+	CmdFolder = filepath.Join(WorkingDir, "cmd")
+	ApiFolder = filepath.Join(CmdFolder, "api")
 }

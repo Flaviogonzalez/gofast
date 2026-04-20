@@ -84,13 +84,19 @@ func (l *SQLLoader) Load() (*Schema, error) {
 				colTypeRaw := strings.TrimSpace(matches[2])
 				remainder := strings.ToUpper(strings.TrimSpace(matches[3]))
 
-				// Extract base type
 				colTypeBase := strings.ToUpper(colTypeRaw)
 				if idx := strings.Index(colTypeBase, "("); idx != -1 {
 					colTypeBase = strings.TrimSpace(colTypeBase[:idx])
 				}
 
-				// Parse column attributes
+				unsigned := strings.Contains(strings.ToUpper(colTypeRaw), "UNSIGNED") ||
+					strings.Contains(remainder, "UNSIGNED")
+				// Strip UNSIGNED/SIGNED/ZEROFILL modifiers from raw type word.
+				for _, mod := range []string{" UNSIGNED", " SIGNED", " ZEROFILL"} {
+					colTypeBase = strings.TrimSuffix(colTypeBase, mod)
+				}
+				colTypeBase = strings.TrimSpace(colTypeBase)
+
 				nullable := !strings.Contains(remainder, "NOT NULL")
 				autoIncrement := strings.Contains(remainder, "AUTO_INCREMENT") ||
 					strings.Contains(remainder, "AUTOINCREMENT")
@@ -98,6 +104,8 @@ func (l *SQLLoader) Load() (*Schema, error) {
 				column := Column{
 					Name:          colName,
 					Type:          mapSQLTypeToGoType(colTypeBase),
+					RawType:       colTypeBase,
+					Unsigned:      unsigned,
 					Nullable:      nullable,
 					AutoIncrement: autoIncrement,
 				}

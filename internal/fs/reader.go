@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -22,7 +23,20 @@ func ReadDatabaseURL() (string, error) {
 		return "", fmt.Errorf("DATABASE_URL no encontrada en las variables de entorno")
 	}
 
-	return dbURL, nil
+	return encodeCredentials(dbURL), nil
+}
+
+// encodeCredentials percent-encodes special characters in the userinfo portion of a database URL
+// so that tools like atlas and net/url can parse it correctly.
+func encodeCredentials(rawURL string) string {
+	// Match scheme://user:pass@host/db
+	re := regexp.MustCompile(`^([^:]+)://([^:@]*)(?::([^@]*))?@(.+)$`)
+	m := re.FindStringSubmatch(rawURL)
+	if m == nil {
+		return rawURL
+	}
+	scheme, user, pass, rest := m[1], m[2], m[3], m[4]
+	return scheme + "://" + url.UserPassword(user, pass).String() + "@" + rest
 }
 
 func AnalyzeDatabaseURL(dbURL string) (*Database, error) {
@@ -31,26 +45,30 @@ func AnalyzeDatabaseURL(dbURL string) (*Database, error) {
 		return nil, fmt.Errorf("URL de base de datos vacía")
 	}
 
-	u, err := url.Parse(dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("URL inválida: %w", err)
+	// Use regex to extract scheme and database name to handle special chars in credentials.
+	re := regexp.MustCompile(`^([^:]+)://[^/]*/([^?#\s]+)`)
+	matches := re.FindStringSubmatch(dbURL)
+	if matches == nil {
+		return nil, fmt.Errorf("URL inválida: no se pudo extraer scheme y base de datos")
 	}
 
 	db := &Database{}
+	scheme := matches[1]
+	dbName := matches[2]
 
-	switch u.Scheme {
+	switch scheme {
 	case "postgres", "postgresql":
 		db.Driver = "postgres"
 	case "mysql", "mariadb":
 		db.Driver = "mysql"
 	default:
-		return nil, fmt.Errorf("driver no soportado: %s", u.Scheme)
+		return nil, fmt.Errorf("driver no soportado: %s", scheme)
 	}
 
-	db.Database = strings.TrimPrefix(u.Path, "/")
-	if db.Database == "" {
+	if dbName == "" {
 		return nil, fmt.Errorf("no se especificó el nombre de la base de datos en la URL")
 	}
+	db.Database = dbName
 
 	return db, nil
 }

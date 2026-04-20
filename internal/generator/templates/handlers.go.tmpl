@@ -3,12 +3,17 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/{{ .ModuleName }}/internal/models"
 )
+
+{{- $idType := idGoType .Table -}}
+{{- $idParse := idParseFunc .Table -}}
+{{- $idBits := idBitSize .Table }}
 
 type {{ singular .Table.Name | title }}Handler struct {
 	queries *models.Queries
@@ -44,22 +49,23 @@ func (h *{{ singular .Table.Name | title }}Handler) Create{{ singular .Table.Nam
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
 }
 {{- end }}
 
 // Get{{ singular .Table.Name | title }}ByID handles GET /api/{{ .Table.Name }}/{id}
 func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name | title }}ByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
+	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
+	id := {{ $idType }}(idRaw)
 
-	result, err := h.queries.Get{{ singular .Table.Name | title }}ByID(r.Context(), int32(id))
+	result, err := h.queries.Get{{ singular .Table.Name | title }}ByID(r.Context(), id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
 		}
@@ -68,7 +74,7 @@ func (h *{{ singular .Table.Name | title }}Handler) Get{{ singular .Table.Name |
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // List{{ .Table.Name | title }} handles GET /api/{{ .Table.Name }}
@@ -80,14 +86,14 @@ func (h *{{ singular .Table.Name | title }}Handler) List{{ .Table.Name | title }
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	_ = json.NewEncoder(w).Encode(results)
 }
 
 {{- if gt (len $updCols) 0 }}
 // Update{{ singular .Table.Name | title }} handles PUT /api/{{ .Table.Name }}/{id}
 func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
+	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -98,7 +104,7 @@ func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Nam
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	params.ID = int32(id)
+	params.ID = {{ $idType }}(idRaw)
 
 	_, err = h.queries.Update{{ singular .Table.Name | title }}(r.Context(), params)
 	if err != nil {
@@ -107,20 +113,21 @@ func (h *{{ singular .Table.Name | title }}Handler) Update{{ singular .Table.Nam
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 {{- end }}
 
 // Delete{{ singular .Table.Name | title }} handles DELETE /api/{{ .Table.Name }}/{id}
 func (h *{{ singular .Table.Name | title }}Handler) Delete{{ singular .Table.Name | title }}(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
+	idRaw, err := strconv.{{ $idParse }}(idStr, 10, {{ $idBits }})
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
+	id := {{ $idType }}(idRaw)
 
-	err = h.queries.Delete{{ singular .Table.Name | title }}(r.Context(), int32(id))
+	err = h.queries.Delete{{ singular .Table.Name | title }}(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

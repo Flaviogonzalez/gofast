@@ -14,8 +14,16 @@ type SQLCGenerateStep struct {
 func (s *SQLCGenerateStep) Name() string { return "Run sqlc generate" }
 
 func (s *SQLCGenerateStep) Run(pctx *ProjectContext) error {
-	var cmd *exec.Cmd
+	if len(pctx.Tables) == 0 {
+		log.Println("  ⚠ no tables to generate — skipping sqlc")
+		return nil
+	}
 
+	if _, err := exec.LookPath("sqlc"); err != nil {
+		return fmt.Errorf("sqlc CLI not found in PATH — install it from https://docs.sqlc.dev/en/latest/overview/install.html")
+	}
+
+	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(pctx.Ctx, "cmd", "/C", "sqlc", "generate")
 	} else {

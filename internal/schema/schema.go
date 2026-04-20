@@ -16,6 +16,8 @@ type Table struct {
 type Column struct {
 	Name          string
 	Type          ColumnType
+	RawType       string // normalized SQL type word, e.g. "BIGINT", "INT", "TINYINT", "VARCHAR"
+	Unsigned      bool
 	Nullable      bool
 	AutoIncrement bool
 }

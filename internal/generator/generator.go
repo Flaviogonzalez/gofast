@@ -42,6 +42,9 @@ var funcMap = template.FuncMap{
 	"singular":         singular,
 	"title":            strings.Title,
 	"updatableColumns": updatableColumns,
+	"idGoType":         idGoType,
+	"idParseFunc":      idParseFunc,
+	"idBitSize":        idBitSize,
 }
 
 func GenerateQueriesForTable(table schema.Table) (string, error) {
@@ -63,8 +66,33 @@ func add(a, b int) int {
 	return a + b
 }
 
+// singular converts a (possibly plural) identifier to its singular form using a
+// small set of English rules. It is intentionally simple; callers with irregular
+// plurals should feed already-singular table names.
 func singular(s string) string {
-	if strings.HasSuffix(s, "s") {
+	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+
+	// -ies → -y (categories → category). Guard short tokens like "lies".
+	if strings.HasSuffix(lower, "ies") && len(s) > 3 {
+		return s[:len(s)-3] + "y"
+	}
+	// Double-letter endings that look plural but aren't.
+	for _, keep := range []string{"ss", "us", "is", "os"} {
+		if strings.HasSuffix(lower, keep) {
+			return s
+		}
+	}
+	// -es endings that need the "es" dropped (addresses → address, boxes → box).
+	for _, suf := range []string{"sses", "xes", "zes", "ches", "shes"} {
+		if strings.HasSuffix(lower, suf) {
+			return s[:len(s)-2]
+		}
+	}
+	// Plain trailing -s.
+	if strings.HasSuffix(lower, "s") {
 		return s[:len(s)-1]
 	}
 	return s
@@ -78,6 +106,75 @@ func updatableColumns(t schema.Table) []schema.Column {
 		}
 	}
 	return cols
+}
+
+// findIDColumn returns the `id` column for a table if present, otherwise the
+// first AUTO_INCREMENT column, otherwise a zero-value column.
+func findIDColumn(t schema.Table) schema.Column {
+	for _, c := range t.Columns {
+		if strings.EqualFold(c.Name, "id") {
+			return c
+		}
+	}
+	for _, c := range t.Columns {
+		if c.AutoIncrement {
+			return c
+		}
+	}
+	return schema.Column{}
+}
+
+// idGoType returns the Go type (matching what sqlc will emit) for the table's
+// primary id column. Falls back to int64 when the column can't be located.
+func idGoType(t schema.Table) string {
+	c := findIDColumn(t)
+	return goIntType(c)
+}
+
+// idParseFunc returns the strconv function name used to parse the URL {id}
+// into the matching Go integer type.
+func idParseFunc(t schema.Table) string {
+	c := findIDColumn(t)
+	if c.Unsigned {
+		return "ParseUint"
+	}
+	return "ParseInt"
+}
+
+// idBitSize returns the bitSize argument passed to strconv.Parse{Int,Uint}.
+func idBitSize(t schema.Table) int {
+	c := findIDColumn(t)
+	switch strings.ToUpper(c.RawType) {
+	case "TINYINT":
+		return 8
+	case "SMALLINT":
+		return 16
+	case "MEDIUMINT", "INT", "INTEGER", "INT4":
+		return 32
+	case "BIGINT", "INT8", "SERIAL", "BIGSERIAL":
+		return 64
+	}
+	return 64
+}
+
+func goIntType(c schema.Column) string {
+	prefix := "int"
+	if c.Unsigned {
+		prefix = "uint"
+	}
+	switch strings.ToUpper(c.RawType) {
+	case "TINYINT":
+		return prefix + "8"
+	case "SMALLINT", "INT2":
+		return prefix + "16"
+	case "MEDIUMINT", "INT", "INTEGER", "INT4":
+		return prefix + "32"
+	case "BIGINT", "INT8":
+		return prefix + "64"
+	case "SERIAL", "BIGSERIAL":
+		return "int64"
+	}
+	return "int64"
 }
 
 func CreateSQLCConfig() (string, error) {
