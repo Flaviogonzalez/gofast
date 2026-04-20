@@ -1,15 +1,24 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
 
+// Build info set by ldflags
+var (
+	Version = "dev"
+	Commit  = "none"
+	Date    = "unknown"
+)
+
 func Run(stderr *os.File, stdout *os.File, args []string, stdin *os.File) int {
 	rootCmd := cobra.Command{
-		Use:   "gofast",
-		Short: "gofast is a CLI tool to generate Go REST APIs quickly",
+		Use:     "gofast",
+		Short:   "gofast is a CLI tool to generate Go REST APIs quickly",
+		Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, Date),
 	}
 
 	rootCmd.AddCommand(generateCmd)

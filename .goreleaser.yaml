@@ -1,0 +1,80 @@
+version: 2
+
+project_name: gofast
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gofast
+    main: ./cmd/gofast
+    binary: gofast
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/flaviogonzalez/gofast/internal/cmd.Version={{.Version}}
+      - -X github.com/flaviogonzalez/gofast/internal/cmd.Commit={{.ShortCommit}}
+      - -X github.com/flaviogonzalez/gofast/internal/cmd.Date={{.Date}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🔧 Other"
+      order: 999
+
+release:
+  github:
+    owner: Flaviogonzalez
+    name: gofast
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  header: |
+    ## gofast v{{.Version}}
+    
+    REST API generator for Go — single binary, zero dependencies.
+  footer: |
+    ---
+    
+    **Full Changelog**: https://github.com/Flaviogonzalez/gofast/compare/{{ .PreviousTag }}...{{ .Tag }}
