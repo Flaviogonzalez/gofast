@@ -53,11 +53,7 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	// Register all handlers
-{{- range .Tables }}
-	{{ singular .Name | title }}Handler := handlers.New{{ singular .Name | title }}Handler(db)
-	{{ singular .Name | title }}Handler.RegisterRoutes(r)
-{{- end }}
+	handlers.RegisterAllRoutes(r, db)
 
 	// Start server
 	port := os.Getenv("PORT")

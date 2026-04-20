@@ -21,6 +21,9 @@ var handlersTemplate string
 //go:embed templates/main.go.tmpl
 var mainTemplate string
 
+//go:embed templates/routes.go.tmpl
+var routesTemplate string
+
 // HandlerData holds data for handler generation
 type HandlerData struct {
 	Table      schema.Table
@@ -99,6 +102,25 @@ func GenerateHandlersForTable(table schema.Table, moduleName string) (string, er
 
 	data := HandlerData{
 		Table:      table,
+		ModuleName: moduleName,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+func GenerateRoutesFile(tables []schema.Table, moduleName string) (string, error) {
+	tmpl, err := template.New("routes").Funcs(funcMap).Parse(routesTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	data := MainFileData{
+		Tables:     tables,
 		ModuleName: moduleName,
 	}
 
